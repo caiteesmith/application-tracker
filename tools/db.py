@@ -21,14 +21,14 @@ def get_engine() -> Engine:
     return create_engine(
         db_url,
         pool_pre_ping=True,
-        pool_size=2, 
-        max_overflow=0, 
+        pool_size=2,
+        max_overflow=0,
         pool_recycle=1800,
         future=True,
     )
 
 
-def list_applications() -> pd.DataFrame:
+def list_applications(user_id: str) -> pd.DataFrame:
     engine = get_engine()
     with engine.begin() as conn:
         rows = conn.execute(
@@ -51,16 +51,17 @@ def list_applications() -> pd.DataFrame:
                   created_at,
                   updated_at
                 FROM applications
+                WHERE user_id = :user_id
                 ORDER BY applied_date DESC NULLS LAST, created_at DESC
                 """
-            )
+            ),
+            {"user_id": user_id},
         ).mappings().all()
 
     if not rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-
     desired = [
         "id",
         "applied_date",
@@ -79,11 +80,10 @@ def list_applications() -> pd.DataFrame:
         "updated_at",
     ]
     df = df[[c for c in desired if c in df.columns]]
-
     return df
 
 
-def get_application(app_id: int) -> Optional[Dict[str, Any]]:
+def get_application(app_id: int, user_id: str) -> Optional[Dict[str, Any]]:
     engine = get_engine()
     with engine.begin() as conn:
         row = conn.execute(
@@ -106,16 +106,16 @@ def get_application(app_id: int) -> Optional[Dict[str, Any]]:
                   created_at,
                   updated_at
                 FROM applications
-                WHERE id = :id
+                WHERE id = :id AND user_id = :user_id
                 """
             ),
-            {"id": app_id},
+            {"id": app_id, "user_id": user_id},
         ).mappings().first()
 
     return dict(row) if row else None
 
 
-def upsert_application(data: Dict[str, Any]) -> int:
+def upsert_application(data: Dict[str, Any], user_id: str) -> int:
     engine = get_engine()
     now = datetime.utcnow()
 
@@ -125,6 +125,7 @@ def upsert_application(data: Dict[str, Any]) -> int:
                 text(
                     """
                     INSERT INTO applications (
+                      user_id,
                       company,
                       title,
                       location_type,
@@ -140,6 +141,7 @@ def upsert_application(data: Dict[str, Any]) -> int:
                       created_at,
                       updated_at
                     ) VALUES (
+                      :user_id,
                       :company,
                       :title,
                       :location_type,
@@ -159,6 +161,7 @@ def upsert_application(data: Dict[str, Any]) -> int:
                     """
                 ),
                 {
+                    "user_id": user_id,
                     "company": data.get("company"),
                     "title": data.get("title"),
                     "location_type": data.get("location_type"),
@@ -196,11 +199,12 @@ def upsert_application(data: Dict[str, Any]) -> int:
                   applied_date = :applied_date,
                   next_follow_up_date = :next_follow_up_date,
                   updated_at = :updated_at
-                WHERE id = :id
+                WHERE id = :id AND user_id = :user_id
                 """
             ),
             {
                 "id": data["id"],
+                "user_id": user_id,
                 "company": data.get("company"),
                 "title": data.get("title"),
                 "location_type": data.get("location_type"),
@@ -219,20 +223,20 @@ def upsert_application(data: Dict[str, Any]) -> int:
         return int(data["id"])
 
 
-def delete_application(app_id: int) -> None:
+def delete_application(app_id: int, user_id: str) -> None:
     engine = get_engine()
     with engine.begin() as conn:
         conn.execute(
-            text("DELETE FROM snapshots WHERE application_id = :id"),
-            {"id": app_id},
+            text("DELETE FROM snapshots WHERE application_id = :id AND user_id = :user_id"),
+            {"id": app_id, "user_id": user_id},
         )
         conn.execute(
-            text("DELETE FROM applications WHERE id = :id"),
-            {"id": app_id},
+            text("DELETE FROM applications WHERE id = :id AND user_id = :user_id"),
+            {"id": app_id, "user_id": user_id},
         )
 
 
-def list_snapshots(app_id: int) -> List[Dict[str, Any]]:
+def list_snapshots(app_id: int, user_id: str) -> List[Dict[str, Any]]:
     engine = get_engine()
     with engine.begin() as conn:
         rows = conn.execute(
@@ -240,25 +244,25 @@ def list_snapshots(app_id: int) -> List[Dict[str, Any]]:
                 """
                 SELECT id, application_id, image_path, captured_at
                 FROM snapshots
-                WHERE application_id = :app_id
+                WHERE application_id = :app_id AND user_id = :user_id
                 ORDER BY captured_at DESC
                 """
             ),
-            {"app_id": app_id},
+            {"app_id": app_id, "user_id": user_id},
         ).mappings().all()
 
     return [dict(r) for r in rows]
 
 
-def add_snapshot(app_id: int, image_path: str) -> None:
+def add_snapshot(app_id: int, image_path: str, user_id: str) -> None:
     engine = get_engine()
     with engine.begin() as conn:
         conn.execute(
             text(
                 """
-                INSERT INTO snapshots (application_id, image_path, captured_at)
-                VALUES (:app_id, :image_path, now())
+                INSERT INTO snapshots (application_id, image_path, captured_at, user_id)
+                VALUES (:app_id, :image_path, now(), :user_id)
                 """
             ),
-            {"app_id": app_id, "image_path": image_path},
+            {"app_id": app_id, "image_path": image_path, "user_id": user_id},
         )

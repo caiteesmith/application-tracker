@@ -9,6 +9,8 @@ import pandas as pd
 import streamlit as st
 from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
+from tools.auth import require_login, supabase_client
+
 
 from tools.db import (
     list_applications,
@@ -97,6 +99,8 @@ def _clear_new_application_form_state():
         if k in st.session_state:
             del st.session_state[k]
 
+def get_current_user_id() -> str:
+    return require_login()
 
 # -------------------------
 # Main app
@@ -109,60 +113,69 @@ def main():
 
     _ensure_dirs()
 
+    user_id = get_current_user_id()
+
     # Sidebar
-    st.sidebar.title("ApplicationTracker")
-    st.sidebar.caption(
-        "Log applications, track outcomes, and see patterns over time, without spreadsheets."
-    )
+    with st.sidebar:
+        st.sidebar.title("ApplicationTracker")
+        st.sidebar.caption(
+            "Log applications, track outcomes, and see patterns over time, without spreadsheets."
+        )
 
-    st.sidebar.markdown("### Filters")
+        st.sidebar.markdown("### Filters")
 
-    # Load all apps as DataFrame
-    df = list_applications()
+        # Load all apps as DataFrame
+        df = list_applications(user_id=user_id)
 
-    # Sidebar filters
-    status_filter = st.sidebar.multiselect(
-        "Status",
-        options=STATUS_OPTIONS,
-        default=STATUS_OPTIONS,
-    )
+        # Sidebar filters
+        status_filter = st.sidebar.multiselect(
+            "Status",
+            options=STATUS_OPTIONS,
+            default=STATUS_OPTIONS,
+        )
 
-    location_filter = st.sidebar.multiselect(
-        "Location type",
-        options=LOCATION_TYPES,
-        default=LOCATION_TYPES,
-    )
+        location_filter = st.sidebar.multiselect(
+            "Location type",
+            options=LOCATION_TYPES,
+            default=LOCATION_TYPES,
+        )
 
-    search_text = st.sidebar.text_input(
-        "Search (company, title, notes)",
-        value="",
-        placeholder="e.g., backend, Netflix, remote",
-    )
+        search_text = st.sidebar.text_input(
+            "Search (company, title, notes)",
+            value="",
+            placeholder="e.g., backend, Netflix, remote",
+        )
 
-    # Filter in-memory
-    filtered_df = df.copy()
+        # Filter in-memory
+        filtered_df = df.copy()
 
-    if not filtered_df.empty:
-        if status_filter:
-            filtered_df = filtered_df[filtered_df["status"].isin(status_filter)]
+        if not filtered_df.empty:
+            if status_filter:
+                filtered_df = filtered_df[filtered_df["status"].isin(status_filter)]
 
-        if location_filter:
-            filtered_df = filtered_df[filtered_df["location_type"].isin(location_filter)]
+            if location_filter:
+                filtered_df = filtered_df[filtered_df["location_type"].isin(location_filter)]
 
-        if search_text.strip():
-            text = search_text.strip().lower()
-            mask = (
-                filtered_df["company"].fillna("").str.lower().str.contains(text)
-                | filtered_df["title"].fillna("").str.lower().str.contains(text)
-                | filtered_df["notes"].fillna("").str.lower().str.contains(text)
-            )
-            filtered_df = filtered_df[mask]
+            if search_text.strip():
+                text = search_text.strip().lower()
+                mask = (
+                    filtered_df["company"].fillna("").str.lower().str.contains(text)
+                    | filtered_df["title"].fillna("").str.lower().str.contains(text)
+                    | filtered_df["notes"].fillna("").str.lower().str.contains(text)
+                )
+                filtered_df = filtered_df[mask]
 
 
-    st.sidebar.caption(
-        "Your applications and screenshots are stored in your private Supabase project. "
-        "No data is uploaded to Streamlit or shared with any external services."
-    )
+        st.sidebar.caption(
+            "Your applications and screenshots are stored in your private Supabase project. "
+            "No data is uploaded to Streamlit or shared with any external services."
+        )
+
+        if st.button("Sign out", use_container_width=True):
+            sb = supabase_client()
+            sb.auth.sign_out()
+            st.session_state["sb_session"] = None
+            st.experimental_rerun()
 
 
     # Session state for selection/mode
@@ -256,110 +269,6 @@ def main():
                 st.session_state["selected_app_id"] = None
 
 
-    def _render_new_application_form():
-        st.subheader("New application")
-
-        with st.form("new_application_form"):
-            company = st.text_input("Company *", key="new_company")
-            title = st.text_input("Job title *", key="new_title")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                location_type = st.selectbox(
-                    "Location type",
-                    LOCATION_TYPES,
-                    index=0,
-                    key="new_location_type",
-                )
-            with col2:
-                location_detail = st.text_input(
-                    "Location detail (city, state)",
-                    key="new_location_detail",
-                )
-
-            col3, col4 = st.columns(2)
-            with col3:
-                salary_min = st.number_input(
-                    "Salary min (base)",
-                    min_value=0.0,
-                    step=1000.0,
-                    key="new_salary_min",
-                )
-            with col4:
-                salary_max = st.number_input(
-                    "Salary max (base)",
-                    min_value=0.0,
-                    step=1000.0,
-                    key="new_salary_max",
-                )
-
-            link_url = st.text_input("Job posting URL", key="new_link_url")
-            applied_date = st.date_input(
-                "Date applied",
-                value=date.today(),
-                key="new_applied_date",
-            )
-
-            status = st.selectbox(
-                "Status",
-                STATUS_OPTIONS,
-                index=1,  # default 'Applied'
-                key="new_status",
-            )
-
-            description_short = st.text_area(
-                "Short description / key notes",
-                placeholder="Key responsibilities, tech stack, why this role caught your eye...",
-                key="new_description_short",
-            )
-
-            notes = st.text_area(
-                "Private notes",
-                placeholder="Interviewers, vibes, red flags, compensation details, etc.",
-                key="new_notes",
-            )
-
-            next_follow_up_date = st.date_input(
-                "Next follow-up date",
-                value=date.today(),
-                key="new_next_follow_up_date",
-            )
-
-            submitted = st.form_submit_button(
-                "Save application",
-                width="stretch",
-            )
-
-            if submitted:
-                if not company.strip() or not title.strip():
-                    st.error("Company and Job title are required.")
-                    return
-
-                data = {
-                    "company": company.strip(),
-                    "title": title.strip(),
-                    "location_type": location_type,
-                    "location_detail": location_detail.strip() if location_detail else "",
-                    "salary_min": float(salary_min) if salary_min else None,
-                    "salary_max": float(salary_max) if salary_max else None,
-                    "link_url": link_url.strip() if link_url else "",
-                    "status": status,
-                    "description_short": description_short.strip() if description_short else "",
-                    "notes": notes.strip() if notes else "",
-                    "applied_date": applied_date.isoformat() if applied_date else None,
-                    "next_follow_up_date": next_follow_up_date.isoformat() if next_follow_up_date else None,
-                }
-
-                new_id = upsert_application(data)
-
-                # Clear the form values after successful save
-                _clear_new_application_form_state()
-
-                st.success("Application saved.")
-                st.session_state["mode"] = "view"
-                st.session_state["selected_app_id"] = new_id
-                st.rerun()
-
     # -------------------------
     # Right column: detail/new form
     # -------------------------
@@ -372,9 +281,9 @@ def main():
         )
 
         if st.session_state["mode"] == "new":
-            _render_new_application_form()
+            _render_new_application_form(user_id)
         else:
-            _render_detail_panel(st.session_state["selected_app_id"])
+            _render_detail_panel(st.session_state["selected_app_id"], user_id)
 
     st.markdown("---")
 
@@ -391,7 +300,7 @@ def _set_mode_new():
     st.session_state["selected_app_id"] = None
 
 
-def _render_new_application_form():
+def _render_new_application_form(user_id: str):
     st.subheader("New application")
 
     # Let Streamlit keep widget values between reruns
@@ -470,18 +379,20 @@ def _render_new_application_form():
                 else None,
             }
 
-            new_id = upsert_application(data)
+            new_id = upsert_application(data, user_id)
+
+            _clear_new_application_form_state()
             st.success("Application saved.")
             st.session_state["mode"] = "view"
             st.session_state["selected_app_id"] = new_id
             st.rerun()
 
 
-def _render_detail_panel(app_id: Optional[str]):
+def _render_detail_panel(app_id: Optional[str], user_id: str):
     if not app_id:
         return
 
-    app = get_application(app_id)
+    app = get_application(app_id, user_id)
     if not app:
         st.warning("Selected application not found. It may have been deleted.")
         return
@@ -572,12 +483,12 @@ def _render_detail_panel(app_id: Optional[str]):
                 "next_follow_up_date": next_follow_up_date.isoformat() if next_follow_up_date else None,
             }
 
-            upsert_application(data)
+            upsert_application(data, user_id)
             st.success("Changes saved.")
             st.rerun()
 
         if delete_clicked:
-            delete_application(app_id)
+            delete_application(app_id, user_id)
             st.success("Application deleted.")
             st.session_state["selected_app_id"] = None
             st.rerun()
@@ -603,13 +514,13 @@ def _render_detail_panel(app_id: Optional[str]):
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
 
-            add_snapshot(app_id, file_path)
+            add_snapshot(app_id, file_path, user_id)
 
         st.success("Screenshot(s) uploaded.")
         st.rerun()
 
     # Show gallery
-    snapshots = list_snapshots(app_id)
+    snapshots = list_snapshots(app_id, user_id)
     if not snapshots:
         st.caption("No screenshots yet.")
     else:
