@@ -160,7 +160,7 @@ def main():
 
 
     st.sidebar.caption(
-        "Your applications and screenshots are stored in your private Supabase project."
+        "Your applications and screenshots are stored in your private Supabase project. "
         "No data is uploaded to Streamlit or shared with any external services."
     )
 
