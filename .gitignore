@@ -15,7 +15,6 @@ venv/
 .ipynb_checkpoints/
 
 # ---- Streamlit ----
-.streamlit/*.toml
 .streamlit/secrets.toml
 
 # ---- App data ----
