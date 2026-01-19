@@ -7,6 +7,13 @@ ApplicationTracker is a clean, focused Streamlit app that helps you log job appl
 
 ## Features
 
+### User Accounts & Secure Data Storage
+
+Users can sign up, log in, and access their own private dashboard. Authentication and data isolation are handled by Supabase Auth and Postgres Row-Level Security.
+- Each user has their own application data
+- No data is shared across accounts or sessions
+- All entries, screenshots, and updates are tied to your Supabase user ID
+
 ### Clean Application Logging
 Store all key details in one place:
 
@@ -74,7 +81,8 @@ What that means in practice:
 ## Tech Stack
 - **Language:** Python 3.14
 - **Frontend:** Streamlit
-- **Data & Storage:** 
+- **Authentication:** Supabase Auth (email, password)
+- **Database & API:** 
   - Supabase: Persistent database backend
   - SQLAlchemy: Database engine & queries
   - psycopg2-binary: Postgres driver
