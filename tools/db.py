@@ -7,20 +7,25 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
-
-_engine = None
-
-
-def get_engine():
-    global _engine
-    if _engine is None:
-        db_url = st.secrets["db"]["url"]
-        _engine = create_engine(db_url, pool_pre_ping=True)
-    return _engine
+from sqlalchemy.engine import Engine
 
 
-def init_db():
-    return
+@st.cache_resource(show_spinner=False)
+def get_engine() -> Engine:
+    db_url: str = st.secrets["db"]["url"]
+
+    if "sslmode=" not in db_url:
+        joiner = "&" if "?" in db_url else "?"
+        db_url = f"{db_url}{joiner}sslmode=require"
+
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,
+        pool_size=2, 
+        max_overflow=0, 
+        pool_recycle=1800,
+        future=True,
+    )
 
 
 def list_applications() -> pd.DataFrame:

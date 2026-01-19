@@ -11,7 +11,6 @@ from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
 
 from tools.db import (
-    init_db,
     list_applications,
     get_application,
     upsert_application,
@@ -109,7 +108,6 @@ def main():
     )
 
     _ensure_dirs()
-    init_db()
 
     # Sidebar
     st.sidebar.title("ApplicationTracker")
