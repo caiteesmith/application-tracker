@@ -1,5 +1,5 @@
 # ApplicationTracker  
-*A calm, personal way to track your job search.*
+*A local-first job application tracker built with Streamlit & SQLite.*
 
 ApplicationTracker is a lightweight Streamlit app that helps you log your job applications, track follow-ups and outcomes, and actually see your progress, all without spreadsheets, scattered bookmarks, or trying to remember whether you already applied somewhere.
 
@@ -53,5 +53,4 @@ Filter your applications by:
 
 ### Local-First
 
-All data is stored locally in the `data/` directory using SQLite.  
-No accounts. No sync. No tracking.
+All data is stored locally in the `data/` directory using SQLite. No accounts. No sync. No tracking.
