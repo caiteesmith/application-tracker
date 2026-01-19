@@ -174,8 +174,11 @@ def main():
         if st.button("Sign out", use_container_width=True):
             sb = supabase_client()
             sb.auth.sign_out()
-            st.session_state["sb_session"] = None
-            st.experimental_rerun()
+
+            for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
+                st.session_state.pop(k, None)
+
+            st.rerun()
 
 
     # Session state for selection/mode
