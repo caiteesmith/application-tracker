@@ -17,7 +17,6 @@ venv/
 # ---- Streamlit ----
 .streamlit/*.toml
 .streamlit/secrets.toml
-.streamlit/config.toml
 
 # ---- App data ----
 data/
