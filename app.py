@@ -159,6 +159,13 @@ def main():
             )
             filtered_df = filtered_df[mask]
 
+
+    st.sidebar.caption(
+        "Your data is stored locally in a SQLite file on your machine. "
+        "Nothing is uploaded or shared."
+    )
+
+
     # Session state for selection / mode
     if "selected_app_id" not in st.session_state:
         st.session_state["selected_app_id"] = None

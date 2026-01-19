@@ -51,6 +51,14 @@ Filter your applications by:
 - Location type
 - Free-text search (company, role, notes)
 
-### Local-First
+## 🛡️ How Your Data Is Stored
 
-All data is stored locally in the `data/` directory using SQLite. No accounts. No sync. No tracking.
+ApplicationTracker uses a local SQLite database (`data/app.db`) that lives entirely on your own machine.  
+This means:
+
+- Your data never leaves your computer  
+- No accounts, servers, or cloud storage are involved  
+- Every person who runs the app locally gets their own private database**
+- You can delete or back up the `data/` folder at any time  
+
+If you deploy this app on Streamlit Cloud, data is stored temporarily in the app container and may reset when the app sleeps or redeploys. For long-term cloud use, a persistent backend (Postgres, Supabase, Firestore, etc.) is recommended.
