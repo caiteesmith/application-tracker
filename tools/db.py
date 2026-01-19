@@ -36,6 +36,7 @@ def list_applications() -> pd.DataFrame:
                 """
                 SELECT
                   id,
+                  applied_date,
                   company,
                   title,
                   location_type,
@@ -46,7 +47,6 @@ def list_applications() -> pd.DataFrame:
                   status,
                   description_short,
                   notes,
-                  applied_date,
                   next_follow_up_date,
                   created_at,
                   updated_at
@@ -59,7 +59,28 @@ def list_applications() -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    desired = [
+        "id",
+        "applied_date",
+        "company",
+        "title",
+        "location_type",
+        "location_detail",
+        "salary_min",
+        "salary_max",
+        "link_url",
+        "status",
+        "description_short",
+        "notes",
+        "next_follow_up_date",
+        "created_at",
+        "updated_at",
+    ]
+    df = df[[c for c in desired if c in df.columns]]
+
+    return df
 
 
 def get_application(app_id: int) -> Optional[Dict[str, Any]]:
