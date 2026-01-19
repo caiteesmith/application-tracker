@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime
 from typing import Optional
+import pandas as pd
 
 import streamlit as st
 from tools.sankey import render_sankey_section
@@ -48,13 +49,13 @@ def _ensure_dirs():
     os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
-def _money(val: Optional[float]) -> str:
-    if val is None:
-        return ""
+def _money(val) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
     try:
         return f"${float(val):,.0f}"
     except Exception:
-        return ""
+        return "—"
 
 
 def _format_app_option(row) -> str:
