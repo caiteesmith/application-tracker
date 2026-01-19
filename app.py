@@ -193,7 +193,6 @@ def main():
             st.info("No applications yet. Click **Add new application** to get started.")
         else:
             table_cols = [
-                "id",
                 "applied_date",
                 "company",
                 "title",
@@ -210,7 +209,6 @@ def main():
             st.dataframe(
                 display_df.rename(
                     columns={
-                        "id": "ID",
                         "applied_date": "Applied",
                         "company": "Company",
                         "title": "Title",
@@ -338,7 +336,6 @@ def main():
                     return
 
                 data = {
-                    "id": None,  # new
                     "company": company.strip(),
                     "title": title.strip(),
                     "location_type": location_type,
