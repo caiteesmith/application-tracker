@@ -3,7 +3,7 @@
 
 ApplicationTracker is a lightweight Streamlit app that helps you log your job applications, track follow-ups and outcomes, and actually see your progress, all without spreadsheets, scattered bookmarks, or trying to remember whether you already applied somewhere.
 
-[!Screenshot of ApplicationTracker](assets/application-tracker-ss.png)
+[Screenshot of ApplicationTracker](assets/application-tracker-ss.png)
 
 ## Features
 ### Clean Application Logging
