@@ -160,8 +160,8 @@ def main():
 
 
     st.sidebar.caption(
-        "Your data is stored locally in a SQLite file on your machine. "
-        "Nothing is uploaded or shared."
+        "Your applications and screenshots are stored in your private Supabase project."
+        "No data is uploaded to Streamlit or shared with any external services."
     )
 
 
