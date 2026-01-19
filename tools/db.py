@@ -91,6 +91,7 @@ def get_application(app_id: int) -> Optional[Dict[str, Any]]:
                 """
                 SELECT
                   id,
+                  applied_date,
                   company,
                   title,
                   location_type,
@@ -101,7 +102,6 @@ def get_application(app_id: int) -> Optional[Dict[str, Any]]:
                   status,
                   description_short,
                   notes,
-                  applied_date,
                   next_follow_up_date,
                   created_at,
                   updated_at

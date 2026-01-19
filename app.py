@@ -165,7 +165,7 @@ def main():
     )
 
 
-    # Session state for selection / mode
+    # Session state for selection/mode
     if "selected_app_id" not in st.session_state:
         st.session_state["selected_app_id"] = None
     if "mode" not in st.session_state:
@@ -184,7 +184,7 @@ def main():
     col_left, col_right = st.columns([0.6, 0.4])
 
     # -------------------------
-    # Left column: table + selection
+    # Left column: Table & selection
     # -------------------------
     with col_left:
         st.subheader("Applications")
@@ -192,30 +192,30 @@ def main():
         if filtered_df.empty:
             st.info("No applications yet. Click **Add new application** to get started.")
         else:
-            # Display a compact table
             table_cols = [
+                "id",
+                "applied_date",
                 "company",
                 "title",
                 "status",
                 "location_type",
-                "applied_date",
                 "salary_min",
                 "salary_max",
             ]
             display_df = filtered_df[table_cols].copy()
 
-            # Format salary columns for display
             display_df["salary_min"] = display_df["salary_min"].apply(_money)
             display_df["salary_max"] = display_df["salary_max"].apply(_money)
 
             st.dataframe(
                 display_df.rename(
                     columns={
+                        "id": "ID",
+                        "applied_date": "Applied",
                         "company": "Company",
                         "title": "Title",
                         "status": "Status",
                         "location_type": "Location",
-                        "applied_date": "Applied",
                         "salary_min": "Salary (min)",
                         "salary_max": "Salary (max)",
                     }
@@ -224,7 +224,6 @@ def main():
                 height=350,
             )
 
-            # Selectbox for detail view
             st.markdown("##### Select an application to view/edit")
 
             # Build options as (label, id)
