@@ -25,17 +25,17 @@ from tools.db import (
 # Config & constants
 # -------------------------
 STATUS_OPTIONS = [
-    "Wishlist",
     "Applied",
+    "Rejected",
     "Recruiter Screen",
     "Interview 1",
     "Interview 2+",
     "Final Round",
     "Offer",
     "Accepted",
-    "Rejected",
     "Withdrawn",
     "Ghosted",
+    "Wishlist"
 ]
 
 LOCATION_TYPES = ["Remote", "Hybrid", "Onsite", "Unknown"]
