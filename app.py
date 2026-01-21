@@ -167,8 +167,8 @@ def main():
 
 
         st.sidebar.caption(
-            "Your applications and screenshots are stored in your private Supabase project. "
-            "No data is uploaded to Streamlit or shared with any external services."
+            "Your applications and screenshots are stored in a private database. "
+            "No data is uploaded or shared with any external services."
         )
 
         if st.button("Sign out", use_container_width=True):
