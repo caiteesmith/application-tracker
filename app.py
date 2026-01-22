@@ -330,7 +330,7 @@ def _render_new_application_form(user_id: str):
         link_url = st.text_input("Job posting URL")
         applied_date = st.date_input("Date applied", value=date.today())
 
-        status = st.selectbox("Status", STATUS_OPTIONS, index=1)  # default 'Applied'
+        status = st.selectbox("Status", STATUS_OPTIONS, index=0)  # default 'Applied'
 
         description_short = st.text_area(
             "Short description / key notes",
