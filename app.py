@@ -308,8 +308,8 @@ def _render_new_application_form(user_id: str):
 
     # Let Streamlit keep widget values between reruns
     with st.form("new_application_form"):
-        company = st.text_input("Company *")
         title = st.text_input("Job title *")
+        company = st.text_input("Company *")
 
         col1, col2 = st.columns(2)
         with col1:
