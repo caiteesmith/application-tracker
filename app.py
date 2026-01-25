@@ -171,7 +171,7 @@ def main():
             "No data is uploaded or shared with any external services."
         )
 
-        if st.button("Sign out", use_container_width=True):
+        if st.button("Sign out", width="stretch"):
             sb = supabase_client()
             sb.auth.sign_out()
 
@@ -189,10 +189,6 @@ def main():
 
     # Top layout
     st.title("ApplicationTracker")
-    st.caption(
-        "A lightweight tool for tracking job applications, follow-ups, and outcomes, "
-        "designed to help you see patterns and momentum over time, not judge progress."
-    )
 
     st.subheader("Overview")
     render_analytics_section(filtered_df)
@@ -235,7 +231,7 @@ def main():
                     }
                 ),
                 use_container_width=True,
-                height=350,
+                height=600,
             )
 
             st.markdown("##### Select an application to view/edit")

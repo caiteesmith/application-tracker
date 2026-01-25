@@ -36,7 +36,7 @@ def require_login() -> str:
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_pw")
 
-        if st.button("Log in", use_container_width=True):
+        if st.button("Log in", width="stretch"):
             try:
                 res = supabase_client().auth.sign_in_with_password(
                     {"email": email, "password": password}
@@ -54,7 +54,7 @@ def require_login() -> str:
         email = st.text_input("Email", key="signup_email")
         password = st.text_input("Password", type="password", key="signup_pw")
 
-        if st.button("Create account", use_container_width=True):
+        if st.button("Create account", width="stretch"):
             try:
                 supabase_client().auth.sign_up(
                     {"email": email, "password": password}
