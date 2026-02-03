@@ -9,8 +9,7 @@ import pandas as pd
 import streamlit as st
 from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
-from tools.auth import require_login, supabase_client
-
+from tools.auth import supabase_client
 
 from tools.db import (
     list_applications,
@@ -35,7 +34,7 @@ STATUS_OPTIONS = [
     "Accepted",
     "Withdrawn",
     "Ghosted",
-    "Wishlist"
+    "Wishlist",
 ]
 
 LOCATION_TYPES = ["Remote", "Hybrid", "Onsite", "Unknown"]
@@ -60,9 +59,6 @@ def _money(val) -> str:
 
 
 def _format_app_option(row) -> str:
-    """
-    Build a human-friendly label for the selectbox.
-    """
     company = row.get("company") or "Unknown company"
     title = row.get("title") or "Unknown role"
     status = row.get("status") or "Unknown status"
@@ -79,7 +75,8 @@ def _parse_date_str(s: Optional[str]) -> Optional[date]:
         return datetime.fromisoformat(s).date()
     except Exception:
         return None
-    
+
+
 def _clear_new_application_form_state():
     keys = [
         "new_company",
@@ -99,8 +96,67 @@ def _clear_new_application_form_state():
         if k in st.session_state:
             del st.session_state[k]
 
-def get_current_user_id() -> str:
-    return require_login()
+
+def get_current_user_id() -> Optional[str]:
+    session = st.session_state.get("sb_session")
+    if session is None:
+        return None
+    try:
+        return session.user.id
+    except Exception:
+        return None
+
+
+def _load_demo_applications() -> pd.DataFrame:
+    data = [
+        {
+            "id": "demo-1",
+            "company": "Ministry of Magic",
+            "title": "Senior Auror",
+            "status": "Interview 1",
+            "location_type": "Hybrid",
+            "location_detail": "London, UK (Level Two)",
+            "salary_min": 120000,
+            "salary_max": 150000,
+            "link_url": "https://ministry.example/jobs/auror",
+            "description_short": "High-risk field role focused on dark wizard containment and magical law enforcement.",
+            "notes": "Kingsley seemed impressed; asked about Patronus proficiency.",
+            "applied_date": "2025-01-10",
+            "next_follow_up_date": "2025-01-20",
+        },
+        {
+            "id": "demo-2",
+            "company": "Weasleys' Wizard Wheezes",
+            "title": "Magical Product Engineer",
+            "status": "Applied",
+            "location_type": "Onsite",
+            "location_detail": "Diagon Alley, London",
+            "salary_min": 85000,
+            "salary_max": 110000,
+            "link_url": "https://weasley.example/jobs/product-engineer",
+            "description_short": "R&D for joke products, portable swamps, enchanted fireworks, and novelty magic.",
+            "notes": "Job description says 'sense of humor required.' Perfect culture fit.",
+            "applied_date": "2025-01-14",
+            "next_follow_up_date": "2025-01-21",
+        },
+        {
+            "id": "demo-3",
+            "company": "Hogwarts School of Witchcraft & Wizardry",
+            "title": "Defense Against the Dark Arts Professor",
+            "status": "Rejected",
+            "location_type": "Onsite",
+            "location_detail": "Highlands, Scotland",
+            "salary_min": 95000,
+            "salary_max": 130000,
+            "link_url": "",
+            "description_short": "One-year renewable contract. Historically unstable role. Must be comfortable with curses.",
+            "notes": "Letter said: 'Position filled by unexpected candidate.' Figures.",
+            "applied_date": "2024-12-05",
+            "next_follow_up_date": None,
+        },
+    ]
+    return pd.DataFrame(data)
+
 
 # -------------------------
 # Main app
@@ -114,39 +170,88 @@ def main():
     _ensure_dirs()
 
     user_id = get_current_user_id()
+    is_logged_in = user_id is not None
 
-    # Sidebar
+    if is_logged_in:
+        df = list_applications(user_id=user_id)
+    else:
+        df = _load_demo_applications()
+
     with st.sidebar:
-        st.sidebar.title("ApplicationTracker")
-        st.sidebar.caption(
-            "Log applications, track outcomes, and see patterns over time, without spreadsheets."
+        st.title("ApplicationTracker")
+        st.caption(
+            "You can use this tool without an account. If you want to save and come back later, log in or sign up below."
         )
 
-        st.sidebar.markdown("### Filters")
+        st.markdown("### Filters")
 
-        # Load all apps as DataFrame
-        df = list_applications(user_id=user_id)
-
-        # Sidebar filters
-        status_filter = st.sidebar.multiselect(
+        status_filter = st.multiselect(
             "Status",
             options=STATUS_OPTIONS,
             default=STATUS_OPTIONS,
         )
 
-        location_filter = st.sidebar.multiselect(
+        location_filter = st.multiselect(
             "Location type",
             options=LOCATION_TYPES,
             default=LOCATION_TYPES,
         )
 
-        search_text = st.sidebar.text_input(
+        search_text = st.text_input(
             "Search (company, title, notes)",
             value="",
             placeholder="e.g., backend, Netflix, remote",
         )
 
-        # Filter in-memory
+        st.markdown("---")
+
+        if is_logged_in:
+            st.success("Signed in")
+            st.caption("Your applications and screenshots are stored in a private, secure database.")
+
+            if st.button("Sign out", use_container_width=True):
+                sb = supabase_client()
+                sb.auth.sign_out()
+                for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+        else:
+            with st.expander("Login / Sign Up", expanded=False):
+                tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
+
+                with tab_login:
+                    st.subheader("Welcome back")
+                    email = st.text_input("Email", key="login_email")
+                    password = st.text_input("Password", type="password", key="login_pw")
+
+                    if st.button("Log in", use_container_width=True):
+                        try:
+                            res = supabase_client().auth.sign_in_with_password(
+                                {"email": email, "password": password}
+                            )
+                            if res.session:
+                                st.session_state["sb_session"] = res.session
+                                st.rerun()
+                            else:
+                                st.error("Invalid email or password.")
+                        except Exception as e:
+                            st.error(f"Login failed: {e}")
+
+                with tab_signup:
+                    st.subheader("Create an account")
+                    email = st.text_input("Email", key="signup_email")
+                    password = st.text_input("Password", type="password", key="signup_pw")
+
+                    if st.button("Sign up", use_container_width=True):
+                        try:
+                            supabase_client().auth.sign_up(
+                                {"email": email, "password": password}
+                            )
+                            st.success("Account created. Check your email if confirmations are enabled.")
+                        except Exception as e:
+                            st.error(f"Sign-up failed: {e}")
+
         filtered_df = df.copy()
 
         if not filtered_df.empty:
@@ -154,41 +259,39 @@ def main():
                 filtered_df = filtered_df[filtered_df["status"].isin(status_filter)]
 
             if location_filter:
-                filtered_df = filtered_df[filtered_df["location_type"].isin(location_filter)]
+                filtered_df = filtered_df[
+                    filtered_df["location_type"].isin(location_filter)
+                ]
 
             if search_text.strip():
                 text = search_text.strip().lower()
                 mask = (
-                    filtered_df["company"].fillna("").str.lower().str.contains(text)
-                    | filtered_df["title"].fillna("").str.lower().str.contains(text)
-                    | filtered_df["notes"].fillna("").str.lower().str.contains(text)
+                    filtered_df["company"]
+                    .fillna("")
+                    .str.lower()
+                    .str.contains(text)
+                    | filtered_df["title"]
+                    .fillna("")
+                    .str.lower()
+                    .str.contains(text)
+                    | filtered_df["notes"]
+                    .fillna("")
+                    .str.lower()
+                    .str.contains(text)
                 )
                 filtered_df = filtered_df[mask]
 
-
-        st.sidebar.caption(
-            "Your applications and screenshots are stored in a private database. "
-            "No data is uploaded or shared with any external services."
-        )
-
-        if st.button("Sign out", width="stretch"):
-            sb = supabase_client()
-            sb.auth.sign_out()
-
-            for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
-                st.session_state.pop(k, None)
-
-            st.rerun()
-
-
-    # Session state for selection/mode
     if "selected_app_id" not in st.session_state:
         st.session_state["selected_app_id"] = None
     if "mode" not in st.session_state:
-        st.session_state["mode"] = "view" 
+        st.session_state["mode"] = "view"
 
-    # Top layout
     st.title("ApplicationTracker")
+
+    if not is_logged_in:
+        st.warning(
+            "You're exploring the demo view. Sign in to add applications, edit details, and upload screenshots."
+        )
 
     st.subheader("Overview")
     render_analytics_section(filtered_df)
@@ -202,7 +305,14 @@ def main():
         st.subheader("Applications")
 
         if filtered_df.empty:
-            st.info("No applications yet. Click **Add new application** to get started.")
+            if is_logged_in:
+                st.info(
+                    "No applications yet. Click **Add new application** to get started."
+                )
+            else:
+                st.info(
+                    "No demo data available. Sign in to start tracking your real applications."
+                )
         else:
             table_cols = [
                 "applied_date",
@@ -213,10 +323,13 @@ def main():
                 "salary_min",
                 "salary_max",
             ]
+            table_cols = [c for c in table_cols if c in filtered_df.columns]
             display_df = filtered_df[table_cols].copy()
 
-            display_df["salary_min"] = display_df["salary_min"].apply(_money)
-            display_df["salary_max"] = display_df["salary_max"].apply(_money)
+            if "salary_min" in display_df.columns:
+                display_df["salary_min"] = display_df["salary_min"].apply(_money)
+            if "salary_max" in display_df.columns:
+                display_df["salary_max"] = display_df["salary_max"].apply(_money)
 
             st.dataframe(
                 display_df.rename(
@@ -234,55 +347,71 @@ def main():
                 height=600,
             )
 
-            st.markdown("##### Select an application to view/edit")
+            if is_logged_in:
+                st.markdown("##### Select an application to view/edit")
 
-            # Build options as (label, id)
-            options = []
-            for _, row in filtered_df.iterrows():
-                options.append((_format_app_option(row), row["id"]))
+                options = []
+                for _, row in filtered_df.iterrows():
+                    options.append((_format_app_option(row), row["id"]))
 
-            # Map from label to id
-            label_to_id = {label: app_id for label, app_id in options}
-            labels = [label for label, _ in options]
+                label_to_id = {label: app_id for label, app_id in options}
+                labels = [label for label, _ in options]
 
-            current_label: Optional[str] = None
-            if st.session_state["selected_app_id"]:
-                # Try to find label that matches the current selected id in filtered df
-                for label, app_id in options:
-                    if app_id == st.session_state["selected_app_id"]:
-                        current_label = label
-                        break
+                current_label: Optional[str] = None
+                if st.session_state["selected_app_id"]:
+                    for label, app_id in options:
+                        if app_id == st.session_state["selected_app_id"]:
+                            current_label = label
+                            break
 
-            selected_label = st.selectbox(
-                "Application",
-                options=["(none)"] + labels,
-                index=(labels.index(current_label) + 1) if current_label in labels else 0,
-                label_visibility="collapsed",
-            )
+                selected_label = st.selectbox(
+                    "Application",
+                    options=["(none)"] + labels,
+                    index=(
+                        labels.index(current_label) + 1
+                        if current_label in labels
+                        else 0
+                    ),
+                    label_visibility="collapsed",
+                )
 
-            if selected_label != "(none)":
-                st.session_state["selected_app_id"] = label_to_id[selected_label]
-                if st.session_state["mode"] == "new":
-                    st.session_state["mode"] = "view"
+                if selected_label != "(none)":
+                    st.session_state["selected_app_id"] = label_to_id[selected_label]
+                    if st.session_state["mode"] == "new":
+                        st.session_state["mode"] = "view"
+                else:
+                    st.session_state["selected_app_id"] = None
             else:
-                st.session_state["selected_app_id"] = None
-
+                st.caption(
+                    "Demo view is read-only. Sign in to select applications and manage them."
+                )
 
     # -------------------------
     # Right column: detail/new form
     # -------------------------
     with col_right:
         st.subheader("Add/Review")
-        st.button(
-            "➕ Add new application",
-            use_container_width=True,
-            on_click=_set_mode_new,
-        )
 
-        if st.session_state["mode"] == "new":
-            _render_new_application_form(user_id)
+        if not is_logged_in:
+            st.button(
+                "Sign in to add your own applications",
+                use_container_width=True,
+                disabled=True,
+            )
+            st.caption(
+                "Once you're signed in, you'll be able to add new applications, edit details, and upload screenshots here."
+            )
         else:
-            _render_detail_panel(st.session_state["selected_app_id"], user_id)
+            st.button(
+                "➕ Add new application",
+                use_container_width=True,
+                on_click=_set_mode_new,
+            )
+
+            if st.session_state["mode"] == "new":
+                _render_new_application_form(user_id)
+            else:
+                _render_detail_panel(st.session_state["selected_app_id"], user_id)
 
     st.markdown("---")
 
@@ -293,7 +422,6 @@ def main():
 # UI subcomponents
 # -------------------------
 def _set_mode_new():
-    # reset any previous "new application" form values
     _clear_new_application_form_state()
     st.session_state["mode"] = "new"
     st.session_state["selected_app_id"] = None
@@ -302,7 +430,6 @@ def _set_mode_new():
 def _render_new_application_form(user_id: str):
     st.subheader("New application")
 
-    # Let Streamlit keep widget values between reruns
     with st.form("new_application_form"):
         title = st.text_input("Job title *")
         company = st.text_input("Company *")
@@ -326,7 +453,7 @@ def _render_new_application_form(user_id: str):
         link_url = st.text_input("Job posting URL")
         applied_date = st.date_input("Date applied", value=date.today())
 
-        status = st.selectbox("Status", STATUS_OPTIONS, index=0)  # default 'Applied'
+        status = st.selectbox("Status", STATUS_OPTIONS, index=0)
 
         description_short = st.text_area(
             "Short description / key notes",
@@ -346,7 +473,7 @@ def _render_new_application_form(user_id: str):
         )
 
         submitted = st.form_submit_button(
-            "Save application", width="stretch"
+            "Save application", use_container_width=True
         )
 
         if submitted:
@@ -370,9 +497,7 @@ def _render_new_application_form(user_id: str):
                 if description_short
                 else "",
                 "notes": notes.strip() if notes else "",
-                "applied_date": applied_date.isoformat()
-                if applied_date
-                else None,
+                "applied_date": applied_date.isoformat() if applied_date else None,
                 "next_follow_up_date": next_follow_up_date.isoformat()
                 if next_follow_up_date
                 else None,
@@ -407,9 +532,15 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
             loc_type_value = app["location_type"] or "Unknown"
             if loc_type_value not in LOCATION_TYPES:
                 LOCATION_TYPES.append(loc_type_value)
-            location_type = st.selectbox("Location type", LOCATION_TYPES, index=LOCATION_TYPES.index(loc_type_value))
+            location_type = st.selectbox(
+                "Location type",
+                LOCATION_TYPES,
+                index=LOCATION_TYPES.index(loc_type_value),
+            )
         with col2:
-            location_detail = st.text_input("Location detail (city, state)", value=app["location_detail"] or "")
+            location_detail = st.text_input(
+                "Location detail (city, state)", value=app["location_detail"] or ""
+            )
 
         col3, col4 = st.columns(2)
         with col3:
@@ -438,7 +569,9 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         if status_value not in STATUS_OPTIONS:
             STATUS_OPTIONS.append(status_value)
 
-        status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(status_value))
+        status = st.selectbox(
+            "Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(status_value)
+        )
 
         description_short = st.text_area(
             "Short description / key notes",
@@ -457,9 +590,13 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
 
         col_save, col_delete = st.columns([0.7, 0.3])
         with col_save:
-            submitted = st.form_submit_button("Save changes", width="stretch")
+            submitted = st.form_submit_button(
+                "Save changes", use_container_width=True
+            )
         with col_delete:
-            delete_clicked = st.form_submit_button("Delete", width="stretch")
+            delete_clicked = st.form_submit_button(
+                "Delete", use_container_width=True
+            )
 
         if submitted:
             if not company.strip() or not title.strip():
@@ -471,15 +608,21 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
                 "company": company.strip(),
                 "title": title.strip(),
                 "location_type": location_type,
-                "location_detail": location_detail.strip() if location_detail else "",
+                "location_detail": location_detail.strip()
+                if location_detail
+                else "",
                 "salary_min": float(salary_min) if salary_min else None,
                 "salary_max": float(salary_max) if salary_max else None,
                 "link_url": link_url.strip() if link_url else "",
                 "status": status,
-                "description_short": description_short.strip() if description_short else "",
+                "description_short": description_short.strip()
+                if description_short
+                else "",
                 "notes": notes.strip() if notes else "",
                 "applied_date": applied_date.isoformat() if applied_date else None,
-                "next_follow_up_date": next_follow_up_date.isoformat() if next_follow_up_date else None,
+                "next_follow_up_date": next_follow_up_date.isoformat()
+                if next_follow_up_date
+                else None,
             }
 
             upsert_application(data, user_id)
@@ -494,7 +637,6 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
 
     st.markdown("#### Screenshots")
 
-    # Screenshot uploader
     uploaded_files = st.file_uploader(
         "Attach screenshots of the job posting (optional)",
         type=["png", "jpg", "jpeg"],
@@ -518,14 +660,13 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         st.success("Screenshot(s) uploaded.")
         st.rerun()
 
-    # Show gallery
     snapshots = list_snapshots(app_id, user_id)
     if not snapshots:
         st.caption("No screenshots yet.")
     else:
         for snap in snapshots:
             st.caption(f"Captured at: {snap['captured_at']}")
-            st.image(snap["image_path"], width="stretch")
+            st.image(snap["image_path"], use_column_width=True)
             st.markdown("---")
 
 
