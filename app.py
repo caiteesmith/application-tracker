@@ -179,9 +179,6 @@ def main():
 
     with st.sidebar:
         st.title("ApplicationTracker")
-        st.caption(
-            "You can use this tool without an account. If you want to save and come back later, log in or sign up below."
-        )
 
         st.markdown("### Filters")
 
@@ -204,9 +201,14 @@ def main():
         )
 
         st.markdown("---")
+        st.caption(
+            "You can use this tool without an account. If you want to save and come back later, log in or sign up below."
+        )
 
         if is_logged_in:
-            st.success("Signed in")
+            user_email = st.session_state["sb_session"].user.email
+            st.success(f"Logged in as **{user_email}**")
+
             st.caption("Your applications and screenshots are stored in a private, secure database.")
 
             if st.button("Sign out", use_container_width=True):
