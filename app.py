@@ -219,7 +219,7 @@ def main():
                 st.rerun()
 
         else:
-            with st.expander("Login / Sign Up", expanded=False):
+            with st.expander("Login/Sign Up", expanded=False):
                 tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
 
                 with tab_login:
@@ -389,7 +389,7 @@ def main():
                 )
 
     # -------------------------
-    # Right column: detail/new form
+    # Right column: Detail/new form
     # -------------------------
     with col_right:
         st.subheader("Add/Review")
