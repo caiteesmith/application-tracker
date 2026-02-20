@@ -113,48 +113,79 @@ def build_sankey_figure(
 
 def render_sankey_section(df: pd.DataFrame) -> None:
     """
-    Render a simple Sankey diagram showing flow from 'Applied' to current statuses.
+    Render a clean Sankey diagram showing movement OUT of Applied,
+    without drawing an Applied -> Applied loop.
 
-    Assumes df has a 'status' column. No flow-type dropdown; just a single, clean view.
+    Applications still in Applied are shown in the caption and in the
+    hover text for the Applied node.
     """
     if df.empty or "status" not in df.columns:
         return
 
     st.subheader("Application Pipeline")
 
-    status_counts = (
-        df["status"]
+    total_apps = len(df)
+
+    # Count how many apps are still sitting in Applied (current status)
+    applied_only_count = int((df["status"] == "Applied").sum())
+
+    # Count flows for statuses OTHER than Applied
+    non_applied_df = df[df["status"] != "Applied"]
+    non_applied_counts = (
+        non_applied_df["status"]
         .fillna("Unknown")
         .value_counts()
         .rename_axis("status")
         .reset_index(name="count")
     )
 
-    labels = ["Applied"]
+    if non_applied_counts.empty:
+        st.caption(
+            f"All {total_apps} applications are still in Applied — no movement yet to display."
+        )
+        return
+
+    moved_apps = int(non_applied_counts["count"].sum())
+
+    # Labels: Applied + every non-applied status
+    labels = ["Applied"] + list(non_applied_counts["status"])
+
+    # Build flow: Applied -> each non-Applied status
     source = []
     target = []
     value = []
 
-    for _, row in status_counts.iterrows():
+    # For node-level hover, we want richer info
+    # customdata will be [current_count, moved_from_applied]
+    node_customdata = []
+
+    # Applied node customdata
+    # current_count = applied_only_count (current Applied),
+    # moved_from_applied = moved_apps (apps that have left Applied)
+    node_customdata.append([applied_only_count, moved_apps])
+
+    # For each non-applied status, compute "current count" and "moved_from_applied"
+    status_to_current_count = (
+        df["status"]
+        .fillna("Unknown")
+        .value_counts()
+        .to_dict()
+    )
+    status_to_flow_count = {
+        row["status"]: int(row["count"]) for _, row in non_applied_counts.iterrows()
+    }
+
+    for _, row in non_applied_counts.iterrows():
         status = row["status"]
         count = int(row["count"])
 
-        if status == "Applied":
-            continue
-
-        if status not in labels:
-            labels.append(status)
-
-        src_idx = 0
-        tgt_idx = labels.index(status)
-
-        source.append(src_idx)
-        target.append(tgt_idx)
+        source.append(0)  # Applied index
+        target.append(labels.index(status))
         value.append(count)
 
-    if not value:
-        st.caption("Not enough data yet to show an application flow.")
-        return
+        current_count = int(status_to_current_count.get(status, 0))
+        moved_from_applied = int(status_to_flow_count.get(status, 0))
+        node_customdata.append([current_count, moved_from_applied])
 
     fig = go.Figure(
         data=[
@@ -163,6 +194,14 @@ def render_sankey_section(df: pd.DataFrame) -> None:
                     label=labels,
                     pad=15,
                     thickness=20,
+                    customdata=node_customdata,
+                    hovertemplate=(
+                        # customdata[0] = current_count
+                        # customdata[1] = moved_from_applied
+                        "Status: %{label}<br>"
+                        "Current count in this status: %{customdata[0]}<br>"
+                        "Moved here from Applied: %{customdata[1]}<extra></extra>"
+                    ),
                 ),
                 link=dict(
                     source=source,
