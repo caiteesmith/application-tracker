@@ -111,29 +111,71 @@ def build_sankey_figure(
     return fig
 
 
-def render_sankey_section(filtered_df: pd.DataFrame) -> None:
-    st.markdown("### Sankey Diagram")
+def render_sankey_section(df: pd.DataFrame) -> None:
+    """
+    Render a simple Sankey diagram showing flow from 'Applied' to current statuses.
 
-    if filtered_df is None or filtered_df.empty:
-        st.caption("No applications to visualize yet.")
+    Assumes df has a 'status' column. No flow-type dropdown; just a single, clean view.
+    """
+    if df.empty or "status" not in df.columns:
         return
 
-    flow_type = st.selectbox(
-        "Flow type",
-        ["Applied → Status"],
-        index=0,
+    st.subheader("Application Pipeline")
+
+    status_counts = (
+        df["status"]
+        .fillna("Unknown")
+        .value_counts()
+        .rename_axis("status")
+        .reset_index(name="count")
     )
 
-    fig = build_sankey_figure(filtered_df, flow_type=flow_type)
-    if fig is None:
-        st.caption("Not enough data to build a Sankey chart yet.")
-    else:
-        st.plotly_chart(fig, width="stretch")
+    labels = ["Applied"]
+    source = []
+    target = []
+    value = []
 
-    with st.expander("Show SankeyMATIC text export"):
-        sankey_text = build_sankey_applied_to_status_text(filtered_df)
-        st.caption(
-            "Copy this into the **Flows** box on sankeymatic.com "
-            "to customize colors/labels or export high-res images."
-        )
-        st.code(sankey_text or "# No data", language="text")
+    for _, row in status_counts.iterrows():
+        status = row["status"]
+        count = int(row["count"])
+
+        if status == "Applied":
+            continue
+
+        if status not in labels:
+            labels.append(status)
+
+        src_idx = 0
+        tgt_idx = labels.index(status)
+
+        source.append(src_idx)
+        target.append(tgt_idx)
+        value.append(count)
+
+    if not value:
+        st.caption("Not enough data yet to show an application flow.")
+        return
+
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                node=dict(
+                    label=labels,
+                    pad=15,
+                    thickness=20,
+                ),
+                link=dict(
+                    source=source,
+                    target=target,
+                    value=value,
+                ),
+            )
+        ]
+    )
+
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=400,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 import pandas as pd
 
@@ -40,6 +40,18 @@ STATUS_OPTIONS = [
 LOCATION_TYPES = ["Remote", "Hybrid", "Onsite", "Unknown"]
 SCREENSHOT_DIR = os.path.join("data", "screenshots")
 
+# Statuses that are eligible to auto-transition to Ghosted
+GHOSTABLE_STATUSES = [
+    "Applied",
+    "Recruiter Screen",
+    "Interview 1",
+    "Interview 2+",
+    "Final Round",
+]
+
+# Fixed ghosting window (days)
+GHOST_AFTER_DAYS = 30
+
 
 # -------------------------
 # Helpers
@@ -68,13 +80,17 @@ def _format_app_option(row) -> str:
     return f"{company} — {title} ({status})"
 
 
-def _parse_date_str(s: Optional[str]) -> Optional[date]:
-    if not s:
+def _parse_date_str(s: Optional[str]):
+    if not s or s == "None":
         return None
+
     try:
-        return datetime.fromisoformat(s).date()
-    except Exception:
-        return None
+        return datetime.fromisoformat(str(s)).date()
+    except:
+        try:
+            return datetime.strptime(str(s).split(" ")[0], "%Y-%m-%d").date()
+        except:
+            return None
 
 
 def _clear_new_application_form_state():
@@ -158,6 +174,34 @@ def _load_demo_applications() -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
+def _apply_ghosting_rules(df: pd.DataFrame, ghost_after_days: int = GHOST_AFTER_DAYS) -> pd.DataFrame:
+    """
+    Automatically mark applications as Ghosted based ONLY on the applied_date.
+    """
+    if df.empty:
+        return df
+
+    cutoff = date.today() - timedelta(days=ghost_after_days)
+    df = df.copy()
+
+    for idx, row in df.iterrows():
+        status = row.get("status")
+
+        if status not in GHOSTABLE_STATUSES:
+            continue
+
+        applied_date_raw = row.get("applied_date")
+        applied = _parse_date_str(str(applied_date_raw))
+
+        if not applied:
+            continue
+
+        if applied <= cutoff and status != "Ghosted":
+            df.at[idx, "status"] = "Ghosted"
+
+    return df
+
+
 # -------------------------
 # Main app
 # -------------------------
@@ -227,7 +271,10 @@ def main():
                     email = st.text_input("Email", key="login_email")
                     password = st.text_input("Password", type="password", key="login_pw")
 
-                    if st.button("Log in", use_container_width=True):
+                    login_clicked = st.button("Log in", use_container_width=True)
+                    # forgot_clicked = st.button("Forgot password?", use_container_width=True)
+
+                    if login_clicked:
                         try:
                             res = supabase_client().auth.sign_in_with_password(
                                 {"email": email, "password": password}
@@ -239,6 +286,19 @@ def main():
                                 st.error("Invalid email or password.")
                         except Exception as e:
                             st.error(f"Login failed: {e}")
+
+                    # if forgot_clicked:
+                    #     if not email:
+                    #         st.warning("Enter your email above so we can send a reset link.")
+                    #     else:
+                    #         try:
+                    #             res = supabase_client().auth.reset_password_for_email(email)
+                    #             st.success(
+                    #                 "If that email exists in our system, a password reset link has been sent. "
+                    #                 "Check your inbox and spam folder."
+                    #             )
+                    #         except Exception as e:
+                    #             st.error(f"Failed to send reset email: {e}")
 
                 with tab_signup:
                     st.subheader("Create an account")
@@ -255,6 +315,9 @@ def main():
                             st.error(f"Sign-up failed: {e}")
 
         filtered_df = df.copy()
+
+        if not filtered_df.empty:
+            filtered_df = _apply_ghosting_rules(filtered_df, GHOST_AFTER_DAYS)
 
         if not filtered_df.empty:
             if status_filter:
