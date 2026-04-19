@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
-from tools.auth import supabase_client, load_session_from_storage, save_session_to_storage, clear_session_storage
+from tools.auth import supabase_client
 
 from tools.db import (
     list_applications,
@@ -191,9 +191,6 @@ def main():
 
     _ensure_dirs()
 
-    # Try to restore session from localStorage on every page load
-    load_session_from_storage()
-
     user_id = get_current_user_id()
     is_logged_in = user_id is not None
 
@@ -236,7 +233,6 @@ def main():
             st.caption("Your applications and screenshots are stored in a private, secure database.")
 
             if st.button("Sign out", use_container_width=True):
-                clear_session_storage()
                 supabase_client().auth.sign_out()
                 for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
                     st.session_state.pop(k, None)
@@ -260,7 +256,6 @@ def main():
                             )
                             if res.session:
                                 st.session_state["sb_session"] = res.session
-                                save_session_to_storage(res.session)
                                 st.rerun()
                             else:
                                 st.error("Invalid email or password.")
