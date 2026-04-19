@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
-from tools.auth import supabase_client, cookie_manager, _save_session_cookie, _load_session_from_cookie, delete_session_cookie
+from tools.auth import supabase_client
 
 from tools.db import (
     list_applications,
@@ -213,14 +213,6 @@ def main():
 
     _ensure_dirs()
 
-    # Initialize cookie manager early so it's ready before any other logic
-    # This must happen before st.stop() could be called elsewhere
-    cookie_manager()
-
-    # Restore session from cookie if not already in memory
-    if not st.session_state.get("sb_session"):
-        _load_session_from_cookie()
-
     user_id = get_current_user_id()
     is_logged_in = user_id is not None
 
@@ -264,8 +256,8 @@ def main():
             st.caption("Your applications and screenshots are stored in a private, secure database.")
 
             if st.button("Sign out", use_container_width=True):
-                supabase_client().auth.sign_out()
-                delete_session_cookie()
+                sb = supabase_client()
+                sb.auth.sign_out()
                 for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
                     st.session_state.pop(k, None)
                 st.rerun()
@@ -288,7 +280,6 @@ def main():
                             )
                             if res.session:
                                 st.session_state["sb_session"] = res.session
-                                _save_session_cookie(res.session)
                                 st.rerun()
                             else:
                                 st.error("Invalid email or password.")
