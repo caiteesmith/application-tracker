@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 
@@ -15,14 +16,14 @@ def supabase_client() -> Client:
 
 def load_session_from_storage() -> bool:
     """
-    Injects a JS snippet via st.iframe that reads tokens from localStorage and
+    Injects a JS snippet that reads tokens from localStorage and
     writes them into the URL query params so Streamlit can read them.
     """
     if st.session_state.get("sb_session"):
         return True
 
-    st.iframe(
-        srcdoc="""
+    components.html(
+        """
         <script>
         const access = localStorage.getItem('sb_access_token');
         const refresh = localStorage.getItem('sb_refresh_token');
@@ -61,8 +62,8 @@ def save_session_to_storage(session) -> None:
     """Saves tokens to localStorage so they persist across tab closes."""
     access = session.access_token
     refresh = session.refresh_token
-    st.iframe(
-        srcdoc=f"""
+    components.html(
+        f"""
         <script>
         localStorage.setItem('sb_access_token', '{access}');
         localStorage.setItem('sb_refresh_token', '{refresh}');
@@ -74,8 +75,8 @@ def save_session_to_storage(session) -> None:
 
 def clear_session_storage() -> None:
     """Clears tokens from localStorage on sign out."""
-    st.iframe(
-        srcdoc="""
+    components.html(
+        """
         <script>
         localStorage.removeItem('sb_access_token');
         localStorage.removeItem('sb_refresh_token');
