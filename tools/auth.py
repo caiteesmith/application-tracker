@@ -24,7 +24,6 @@ def cookie_manager():
 
 
 def _save_session_cookie(session) -> None:
-    st.write("Attempting to save cookie...")
     cookie_manager().set(
         "sb_session",
         json.dumps({
@@ -33,7 +32,6 @@ def _save_session_cookie(session) -> None:
         }),
         expires_at=datetime.now() + timedelta(days=30),
     )
-    st.write("Cookie saved!")
 
 
 def _load_session_from_cookie() -> bool:
@@ -59,54 +57,3 @@ def logout() -> None:
     cookie_manager().delete("sb_session")
     st.session_state.pop("sb_session", None)
     st.rerun()
-
-
-def require_login() -> str:
-    # 1. Already have an in-memory session
-    if st.session_state.get("sb_session"):
-        return st.session_state["sb_session"].user.id
-
-    # 2. Try to restore from cookie (survives tab close / refresh)
-    if _load_session_from_cookie():
-        return st.session_state["sb_session"].user.id
-
-    # 3. No session — show login UI
-    st.subheader("Sign in")
-    tab_login, tab_signup = st.tabs(["Log in", "Create account"])
-
-    with tab_login:
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_pw")
-
-        if st.button("Log in", width="stretch"):
-            try:
-                res = supabase_client().auth.sign_in_with_password(
-                    {"email": email, "password": password}
-                )
-                if res.session:
-                    st.session_state["sb_session"] = res.session
-                    _save_session_cookie(res.session)
-                    st.write("Session set:", res.session.access_token[:10])
-                    st.write("Cookie manager ready:", cookie_manager())
-                    st.rerun()
-                else:
-                    st.error("Invalid email or password.")
-            except Exception as e:
-                st.error(f"Login failed: {e}")
-
-    with tab_signup:
-        email = st.text_input("Email", key="signup_email")
-        password = st.text_input("Password", type="password", key="signup_pw")
-
-        if st.button("Create account", width="stretch"):
-            try:
-                supabase_client().auth.sign_up(
-                    {"email": email, "password": password}
-                )
-                st.success(
-                    "Account created. Check your email if confirmations are enabled."
-                )
-            except Exception as e:
-                st.error(f"Sign-up failed: {e}")
-
-    st.stop()
