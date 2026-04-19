@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from tools.sankey import render_sankey_section
 from tools.analytics import render_analytics_section
-from tools.auth import supabase_client
+from tools.auth import supabase_client, load_session_from_storage, save_session_to_storage, clear_session_storage
 
 from tools.db import (
     list_applications,
@@ -40,7 +40,6 @@ STATUS_OPTIONS = [
 LOCATION_TYPES = ["Remote", "Hybrid", "Onsite", "Unknown"]
 SCREENSHOT_DIR = os.path.join("data", "screenshots")
 
-# Statuses that are eligible to auto-transition to Ghosted
 GHOSTABLE_STATUSES = [
     "Applied",
     "Recruiter Screen",
@@ -49,7 +48,6 @@ GHOSTABLE_STATUSES = [
     "Final Round",
 ]
 
-# Fixed ghosting window (days)
 GHOST_AFTER_DAYS = 30
 
 
@@ -83,7 +81,6 @@ def _format_app_option(row) -> str:
 def _parse_date_str(s: Optional[str]):
     if not s or s == "None":
         return None
-
     try:
         return datetime.fromisoformat(str(s)).date()
     except:
@@ -95,18 +92,9 @@ def _parse_date_str(s: Optional[str]):
 
 def _clear_new_application_form_state():
     keys = [
-        "new_company",
-        "new_title",
-        "new_location_type",
-        "new_location_detail",
-        "new_salary_min",
-        "new_salary_max",
-        "new_link_url",
-        "new_applied_date",
-        "new_status",
-        "new_description_short",
-        "new_notes",
-        "new_next_follow_up_date",
+        "new_company", "new_title", "new_location_type", "new_location_detail",
+        "new_salary_min", "new_salary_max", "new_link_url", "new_applied_date",
+        "new_status", "new_description_short", "new_notes", "new_next_follow_up_date",
     ]
     for k in keys:
         if k in st.session_state:
@@ -175,30 +163,20 @@ def _load_demo_applications() -> pd.DataFrame:
 
 
 def _apply_ghosting_rules(df: pd.DataFrame, ghost_after_days: int = GHOST_AFTER_DAYS) -> pd.DataFrame:
-    """
-    Automatically mark applications as Ghosted based ONLY on the applied_date.
-    """
     if df.empty:
         return df
-
     cutoff = date.today() - timedelta(days=ghost_after_days)
     df = df.copy()
-
     for idx, row in df.iterrows():
         status = row.get("status")
-
         if status not in GHOSTABLE_STATUSES:
             continue
-
         applied_date_raw = row.get("applied_date")
         applied = _parse_date_str(str(applied_date_raw))
-
         if not applied:
             continue
-
         if applied <= cutoff and status != "Ghosted":
             df.at[idx, "status"] = "Ghosted"
-
     return df
 
 
@@ -212,6 +190,9 @@ def main():
     )
 
     _ensure_dirs()
+
+    # Try to restore session from localStorage on every page load
+    load_session_from_storage()
 
     user_id = get_current_user_id()
     is_logged_in = user_id is not None
@@ -252,12 +233,11 @@ def main():
         if is_logged_in:
             user_email = st.session_state["sb_session"].user.email
             st.success(f"Logged in as **{user_email}**")
-
             st.caption("Your applications and screenshots are stored in a private, secure database.")
 
             if st.button("Sign out", use_container_width=True):
-                sb = supabase_client()
-                sb.auth.sign_out()
+                clear_session_storage()
+                supabase_client().auth.sign_out()
                 for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
                     st.session_state.pop(k, None)
                 st.rerun()
@@ -280,6 +260,7 @@ def main():
                             )
                             if res.session:
                                 st.session_state["sb_session"] = res.session
+                                save_session_to_storage(res.session)
                                 st.rerun()
                             else:
                                 st.error("Invalid email or password.")
@@ -308,27 +289,14 @@ def main():
         if not filtered_df.empty:
             if status_filter:
                 filtered_df = filtered_df[filtered_df["status"].isin(status_filter)]
-
             if location_filter:
-                filtered_df = filtered_df[
-                    filtered_df["location_type"].isin(location_filter)
-                ]
-
+                filtered_df = filtered_df[filtered_df["location_type"].isin(location_filter)]
             if search_text.strip():
                 text = search_text.strip().lower()
                 mask = (
-                    filtered_df["company"]
-                    .fillna("")
-                    .str.lower()
-                    .str.contains(text)
-                    | filtered_df["title"]
-                    .fillna("")
-                    .str.lower()
-                    .str.contains(text)
-                    | filtered_df["notes"]
-                    .fillna("")
-                    .str.lower()
-                    .str.contains(text)
+                    filtered_df["company"].fillna("").str.lower().str.contains(text)
+                    | filtered_df["title"].fillna("").str.lower().str.contains(text)
+                    | filtered_df["notes"].fillna("").str.lower().str.contains(text)
                 )
                 filtered_df = filtered_df[mask]
 
@@ -349,31 +317,16 @@ def main():
 
     col_left, col_right = st.columns([0.6, 0.4])
 
-    # -------------------------
-    # Left column: Table & selection
-    # -------------------------
     with col_left:
         st.subheader("Applications")
 
         if filtered_df.empty:
             if is_logged_in:
-                st.info(
-                    "No applications yet. Click **Add new application** to get started."
-                )
+                st.info("No applications yet. Click **Add new application** to get started.")
             else:
-                st.info(
-                    "No demo data available. Sign in to start tracking your real applications."
-                )
+                st.info("No demo data available. Sign in to start tracking your real applications.")
         else:
-            table_cols = [
-                "applied_date",
-                "company",
-                "title",
-                "status",
-                "location_type",
-                "salary_min",
-                "salary_max",
-            ]
+            table_cols = ["applied_date", "company", "title", "status", "location_type", "salary_min", "salary_max"]
             table_cols = [c for c in table_cols if c in filtered_df.columns]
             display_df = filtered_df[table_cols].copy()
 
@@ -383,17 +336,11 @@ def main():
                 display_df["salary_max"] = display_df["salary_max"].apply(_money)
 
             st.dataframe(
-                display_df.rename(
-                    columns={
-                        "applied_date": "Applied",
-                        "company": "Company",
-                        "title": "Title",
-                        "status": "Status",
-                        "location_type": "Location",
-                        "salary_min": "Salary (min)",
-                        "salary_max": "Salary (max)",
-                    }
-                ),
+                display_df.rename(columns={
+                    "applied_date": "Applied", "company": "Company", "title": "Title",
+                    "status": "Status", "location_type": "Location",
+                    "salary_min": "Salary (min)", "salary_max": "Salary (max)",
+                }),
                 use_container_width=True,
                 height=600,
             )
@@ -418,11 +365,7 @@ def main():
                 selected_label = st.selectbox(
                     "Application",
                     options=["(none)"] + labels,
-                    index=(
-                        labels.index(current_label) + 1
-                        if current_label in labels
-                        else 0
-                    ),
+                    index=(labels.index(current_label) + 1 if current_label in labels else 0),
                     label_visibility="collapsed",
                 )
 
@@ -433,31 +376,16 @@ def main():
                 else:
                     st.session_state["selected_app_id"] = None
             else:
-                st.caption(
-                    "Demo view is read-only. Sign in to select applications and manage them."
-                )
+                st.caption("Demo view is read-only. Sign in to select applications and manage them.")
 
-    # -------------------------
-    # Right column: Detail/new form
-    # -------------------------
     with col_right:
         st.subheader("Add/Review")
 
         if not is_logged_in:
-            st.button(
-                "Sign in to add your own applications",
-                use_container_width=True,
-                disabled=True,
-            )
-            st.caption(
-                "Once you're signed in, you'll be able to add new applications, edit details, and upload screenshots here."
-            )
+            st.button("Sign in to add your own applications", use_container_width=True, disabled=True)
+            st.caption("Once you're signed in, you'll be able to add new applications, edit details, and upload screenshots here.")
         else:
-            st.button(
-                "➕ Add new application",
-                use_container_width=True,
-                on_click=_set_mode_new,
-            )
+            st.button("➕ Add new application", use_container_width=True, on_click=_set_mode_new)
 
             if st.session_state["mode"] == "new":
                 _render_new_application_form(user_id)
@@ -465,7 +393,6 @@ def main():
                 _render_detail_panel(st.session_state["selected_app_id"], user_id)
 
     st.markdown("---")
-
     render_sankey_section(filtered_df)
 
 
@@ -493,39 +420,24 @@ def _render_new_application_form(user_id: str):
 
         col3, col4 = st.columns(2)
         with col3:
-            salary_min = st.number_input(
-                "Salary min (base)", min_value=0.0, step=1000.0
-            )
+            salary_min = st.number_input("Salary min (base)", min_value=0.0, step=1000.0)
         with col4:
-            salary_max = st.number_input(
-                "Salary max (base)", min_value=0.0, step=1000.0
-            )
+            salary_max = st.number_input("Salary max (base)", min_value=0.0, step=1000.0)
 
         link_url = st.text_input("Job posting URL")
         applied_date = st.date_input("Date applied", value=date.today())
-
         status = st.selectbox("Status", STATUS_OPTIONS, index=0)
-
         description_short = st.text_area(
             "Short description / key notes",
-            placeholder=(
-                "Key responsibilities, tech stack, why this role caught your eye..."
-            ),
+            placeholder="Key responsibilities, tech stack, why this role caught your eye...",
         )
-
         notes = st.text_area(
             "Private notes",
             placeholder="Interviewers, vibes, red flags, compensation details, etc.",
         )
+        next_follow_up_date = st.date_input("Next follow-up date", value=date.today())
 
-        next_follow_up_date = st.date_input(
-            "Next follow-up date",
-            value=date.today(),
-        )
-
-        submitted = st.form_submit_button(
-            "Save application", use_container_width=True
-        )
+        submitted = st.form_submit_button("Save application", use_container_width=True)
 
         if submitted:
             if not company.strip() or not title.strip():
@@ -537,25 +449,18 @@ def _render_new_application_form(user_id: str):
                 "company": company.strip(),
                 "title": title.strip(),
                 "location_type": location_type,
-                "location_detail": location_detail.strip()
-                if location_detail
-                else "",
+                "location_detail": location_detail.strip() if location_detail else "",
                 "salary_min": float(salary_min) if salary_min else None,
                 "salary_max": float(salary_max) if salary_max else None,
                 "link_url": link_url.strip() if link_url else "",
                 "status": status,
-                "description_short": description_short.strip()
-                if description_short
-                else "",
+                "description_short": description_short.strip() if description_short else "",
                 "notes": notes.strip() if notes else "",
                 "applied_date": applied_date.isoformat() if applied_date else None,
-                "next_follow_up_date": next_follow_up_date.isoformat()
-                if next_follow_up_date
-                else None,
+                "next_follow_up_date": next_follow_up_date.isoformat() if next_follow_up_date else None,
             }
 
             new_id = upsert_application(data, user_id)
-
             _clear_new_application_form_state()
             st.success("Application saved.")
             st.session_state["mode"] = "view"
@@ -584,33 +489,25 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
             if loc_type_value not in LOCATION_TYPES:
                 LOCATION_TYPES.append(loc_type_value)
             location_type = st.selectbox(
-                "Location type",
-                LOCATION_TYPES,
+                "Location type", LOCATION_TYPES,
                 index=LOCATION_TYPES.index(loc_type_value),
             )
         with col2:
-            location_detail = st.text_input(
-                "Location detail (city, state)", value=app["location_detail"] or ""
-            )
+            location_detail = st.text_input("Location detail (city, state)", value=app["location_detail"] or "")
 
         col3, col4 = st.columns(2)
         with col3:
             salary_min = st.number_input(
-                "Salary min (base)",
-                min_value=0.0,
-                step=1000.0,
+                "Salary min (base)", min_value=0.0, step=1000.0,
                 value=float(app["salary_min"]) if app["salary_min"] is not None else 0.0,
             )
         with col4:
             salary_max = st.number_input(
-                "Salary max (base)",
-                min_value=0.0,
-                step=1000.0,
+                "Salary max (base)", min_value=0.0, step=1000.0,
                 value=float(app["salary_max"]) if app["salary_max"] is not None else 0.0,
             )
 
         link_url = st.text_input("Job posting URL", value=app["link_url"] or "")
-
         applied_date = st.date_input(
             "Date applied",
             value=_parse_date_str(app["applied_date"]) or date.today(),
@@ -619,21 +516,10 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         status_value = app["status"] or "Applied"
         if status_value not in STATUS_OPTIONS:
             STATUS_OPTIONS.append(status_value)
+        status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(status_value))
 
-        status = st.selectbox(
-            "Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(status_value)
-        )
-
-        description_short = st.text_area(
-            "Short description / key notes",
-            value=app["description_short"] or "",
-        )
-
-        notes = st.text_area(
-            "Private notes",
-            value=app["notes"] or "",
-        )
-
+        description_short = st.text_area("Short description / key notes", value=app["description_short"] or "")
+        notes = st.text_area("Private notes", value=app["notes"] or "")
         next_follow_up_date = st.date_input(
             "Next follow-up date",
             value=_parse_date_str(app["next_follow_up_date"]) or date.today(),
@@ -641,13 +527,9 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
 
         col_save, col_delete = st.columns([0.7, 0.3])
         with col_save:
-            submitted = st.form_submit_button(
-                "Save changes", use_container_width=True
-            )
+            submitted = st.form_submit_button("Save changes", use_container_width=True)
         with col_delete:
-            delete_clicked = st.form_submit_button(
-                "Delete", use_container_width=True
-            )
+            delete_clicked = st.form_submit_button("Delete", use_container_width=True)
 
         if submitted:
             if not company.strip() or not title.strip():
@@ -659,21 +541,15 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
                 "company": company.strip(),
                 "title": title.strip(),
                 "location_type": location_type,
-                "location_detail": location_detail.strip()
-                if location_detail
-                else "",
+                "location_detail": location_detail.strip() if location_detail else "",
                 "salary_min": float(salary_min) if salary_min else None,
                 "salary_max": float(salary_max) if salary_max else None,
                 "link_url": link_url.strip() if link_url else "",
                 "status": status,
-                "description_short": description_short.strip()
-                if description_short
-                else "",
+                "description_short": description_short.strip() if description_short else "",
                 "notes": notes.strip() if notes else "",
                 "applied_date": applied_date.isoformat() if applied_date else None,
-                "next_follow_up_date": next_follow_up_date.isoformat()
-                if next_follow_up_date
-                else None,
+                "next_follow_up_date": next_follow_up_date.isoformat() if next_follow_up_date else None,
             }
 
             upsert_application(data, user_id)
@@ -698,14 +574,11 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         for file in uploaded_files:
             app_dir = os.path.join(SCREENSHOT_DIR, app_id)
             os.makedirs(app_dir, exist_ok=True)
-
             timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
             filename = f"{timestamp}_{file.name}"
             file_path = os.path.join(app_dir, filename)
-
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
-
             add_snapshot(app_id, file_path, user_id)
 
         st.success("Screenshot(s) uploaded.")
