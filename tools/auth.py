@@ -18,9 +18,9 @@ def supabase_client() -> Client:
 
 
 def cookie_manager():
-    cm = stx.CookieManager()
-    _ = cm.get_all()  # force initialization on first render
-    return cm
+    if "cookie_manager" not in st.session_state:
+        st.session_state["cookie_manager"] = stx.CookieManager(key="cookie_manager")
+    return st.session_state["cookie_manager"]
 
 
 def _save_session_cookie(session) -> None:
