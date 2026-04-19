@@ -25,6 +25,7 @@ def cookie_manager():
 
 
 def _save_session_cookie(session) -> None:
+    st.write("Attempting to save cookie...")
     cookie_manager().set(
         "sb_session",
         json.dumps({
@@ -33,6 +34,7 @@ def _save_session_cookie(session) -> None:
         }),
         expires_at=datetime.now() + timedelta(days=30),
     )
+    st.write("Cookie saved!")
 
 
 def _load_session_from_cookie() -> bool:
@@ -85,6 +87,8 @@ def require_login() -> str:
                 if res.session:
                     st.session_state["sb_session"] = res.session
                     _save_session_cookie(res.session)
+                    st.write("Session set:", res.session.access_token[:10])
+                    st.write("Cookie manager ready:", cookie_manager())
                     st.rerun()
                 else:
                     st.error("Invalid email or password.")
