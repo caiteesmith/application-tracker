@@ -17,7 +17,6 @@ def supabase_client() -> Client:
     )
 
 
-@st.cache_resource(show_spinner=False)
 def cookie_manager():
     cm = stx.CookieManager()
     _ = cm.get_all()  # force initialization on first render
