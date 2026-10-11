@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import pandas as pd
 
@@ -61,11 +61,11 @@ def _ensure_dirs():
 
 def _money(val) -> str:
     if val is None or (isinstance(val, float) and pd.isna(val)):
-        return "—"
+        return "-"
     try:
         return f"${float(val):,.0f}"
-    except Exception:
-        return "—"
+    except (TypeError, ValueError):
+        return "-"
 
 
 def _format_app_option(row) -> str:
@@ -74,8 +74,8 @@ def _format_app_option(row) -> str:
     status = row.get("status") or "Unknown status"
     applied = row.get("applied_date") or ""
     if applied:
-        return f"{company} — {title} ({status}, {applied})"
-    return f"{company} — {title} ({status})"
+        return f"{company} | {title} ({status}, {applied})"
+    return f"{company} | {title} ({status})"
 
 
 def _parse_date_str(s: Optional[str]):
@@ -83,11 +83,16 @@ def _parse_date_str(s: Optional[str]):
         return None
     try:
         return datetime.fromisoformat(str(s)).date()
-    except:
+    except (TypeError, ValueError):
         try:
             return datetime.strptime(str(s).split(" ")[0], "%Y-%m-%d").date()
-        except:
+        except (TypeError, ValueError):
             return None
+
+
+def _with_option(options: list[str], value: str) -> list[str]:
+    """Return a copy of options that includes value, without mutating the global list."""
+    return options if value in options else [*options, value]
 
 
 def _clear_new_application_form_state():
@@ -171,8 +176,7 @@ def _apply_ghosting_rules(df: pd.DataFrame, ghost_after_days: int = GHOST_AFTER_
         status = row.get("status")
         if status not in GHOSTABLE_STATUSES:
             continue
-        applied_date_raw = row.get("applied_date")
-        applied = _parse_date_str(str(applied_date_raw))
+        applied = _parse_date_str(str(row.get("applied_date")))
         if not applied:
             continue
         if applied <= cutoff and status != "Ghosted":
@@ -232,7 +236,7 @@ def main():
             st.success(f"Logged in as **{user_email}**")
             st.caption("Your applications and screenshots are stored in a private, secure database.")
 
-            if st.button("Sign out", use_container_width=True):
+            if st.button("Sign out", width="stretch"):
                 supabase_client().auth.sign_out()
                 for k in ["sb_session", "login_email", "login_pw", "signup_email", "signup_pw"]:
                     st.session_state.pop(k, None)
@@ -247,9 +251,7 @@ def main():
                     email = st.text_input("Email", key="login_email")
                     password = st.text_input("Password", type="password", key="login_pw")
 
-                    login_clicked = st.button("Log in", use_container_width=True)
-
-                    if login_clicked:
+                    if st.button("Log in", width="stretch"):
                         try:
                             res = supabase_client().auth.sign_in_with_password(
                                 {"email": email, "password": password}
@@ -267,7 +269,7 @@ def main():
                     email = st.text_input("Email", key="signup_email")
                     password = st.text_input("Password", type="password", key="signup_pw")
 
-                    if st.button("Sign up", use_container_width=True):
+                    if st.button("Sign up", width="stretch"):
                         try:
                             supabase_client().auth.sign_up(
                                 {"email": email, "password": password}
@@ -289,9 +291,9 @@ def main():
             if search_text.strip():
                 text = search_text.strip().lower()
                 mask = (
-                    filtered_df["company"].fillna("").str.lower().str.contains(text)
-                    | filtered_df["title"].fillna("").str.lower().str.contains(text)
-                    | filtered_df["notes"].fillna("").str.lower().str.contains(text)
+                    filtered_df["company"].fillna("").str.lower().str.contains(text, regex=False)
+                    | filtered_df["title"].fillna("").str.lower().str.contains(text, regex=False)
+                    | filtered_df["notes"].fillna("").str.lower().str.contains(text, regex=False)
                 )
                 filtered_df = filtered_df[mask]
 
@@ -336,17 +338,14 @@ def main():
                     "status": "Status", "location_type": "Location",
                     "salary_min": "Salary (min)", "salary_max": "Salary (max)",
                 }),
-                use_container_width=True,
+                width="stretch",
                 height=600,
             )
 
             if is_logged_in:
                 st.markdown("##### Select an application to view/edit")
 
-                options = []
-                for _, row in filtered_df.iterrows():
-                    options.append((_format_app_option(row), row["id"]))
-
+                options = [(_format_app_option(row), row["id"]) for _, row in filtered_df.iterrows()]
                 label_to_id = {label: app_id for label, app_id in options}
                 labels = [label for label, _ in options]
 
@@ -377,10 +376,10 @@ def main():
         st.subheader("Add/Review")
 
         if not is_logged_in:
-            st.button("Sign in to add your own applications", use_container_width=True, disabled=True)
+            st.button("Sign in to add your own applications", width="stretch", disabled=True)
             st.caption("Once you're signed in, you'll be able to add new applications, edit details, and upload screenshots here.")
         else:
-            st.button("➕ Add new application", use_container_width=True, on_click=_set_mode_new)
+            st.button("➕ Add new application", width="stretch", on_click=_set_mode_new)
 
             if st.session_state["mode"] == "new":
                 _render_new_application_form(user_id)
@@ -432,7 +431,7 @@ def _render_new_application_form(user_id: str):
         )
         next_follow_up_date = st.date_input("Next follow-up date", value=date.today())
 
-        submitted = st.form_submit_button("Save application", use_container_width=True)
+        submitted = st.form_submit_button("Save application", width="stretch")
 
         if submitted:
             if not company.strip() or not title.strip():
@@ -481,11 +480,10 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         col1, col2 = st.columns(2)
         with col1:
             loc_type_value = app["location_type"] or "Unknown"
-            if loc_type_value not in LOCATION_TYPES:
-                LOCATION_TYPES.append(loc_type_value)
+            loc_options = _with_option(LOCATION_TYPES, loc_type_value)
             location_type = st.selectbox(
-                "Location type", LOCATION_TYPES,
-                index=LOCATION_TYPES.index(loc_type_value),
+                "Location type", loc_options,
+                index=loc_options.index(loc_type_value),
             )
         with col2:
             location_detail = st.text_input("Location detail (city, state)", value=app["location_detail"] or "")
@@ -509,9 +507,8 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
         )
 
         status_value = app["status"] or "Applied"
-        if status_value not in STATUS_OPTIONS:
-            STATUS_OPTIONS.append(status_value)
-        status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(status_value))
+        status_options = _with_option(STATUS_OPTIONS, status_value)
+        status = st.selectbox("Status", status_options, index=status_options.index(status_value))
 
         description_short = st.text_area("Short description / key notes", value=app["description_short"] or "")
         notes = st.text_area("Private notes", value=app["notes"] or "")
@@ -522,9 +519,9 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
 
         col_save, col_delete = st.columns([0.7, 0.3])
         with col_save:
-            submitted = st.form_submit_button("Save changes", use_container_width=True)
+            submitted = st.form_submit_button("Save changes", width="stretch")
         with col_delete:
-            delete_clicked = st.form_submit_button("Delete", use_container_width=True)
+            delete_clicked = st.form_submit_button("Delete", width="stretch")
 
         if submitted:
             if not company.strip() or not title.strip():
@@ -559,23 +556,30 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
 
     st.markdown("#### Screenshots")
 
+    # Changing the key after a successful upload resets the widget, so the same
+    # files aren't re-saved on every rerun.
+    nonce_key = f"uploader_nonce_{app_id}"
+    nonce = st.session_state.get(nonce_key, 0)
+
     uploaded_files = st.file_uploader(
         "Attach screenshots of the job posting (optional)",
         type=["png", "jpg", "jpeg"],
         accept_multiple_files=True,
+        key=f"uploader_{app_id}_{nonce}",
     )
 
     if uploaded_files:
+        app_dir = os.path.join(SCREENSHOT_DIR, app_id)
+        os.makedirs(app_dir, exist_ok=True)
         for file in uploaded_files:
-            app_dir = os.path.join(SCREENSHOT_DIR, app_id)
-            os.makedirs(app_dir, exist_ok=True)
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-            filename = f"{timestamp}_{file.name}"
-            file_path = os.path.join(app_dir, filename)
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+            safe_name = os.path.basename(file.name)
+            file_path = os.path.join(app_dir, f"{timestamp}_{safe_name}")
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
             add_snapshot(app_id, file_path, user_id)
 
+        st.session_state[nonce_key] = nonce + 1
         st.success("Screenshot(s) uploaded.")
         st.rerun()
 
@@ -585,7 +589,10 @@ def _render_detail_panel(app_id: Optional[str], user_id: str):
     else:
         for snap in snapshots:
             st.caption(f"Captured at: {snap['captured_at']}")
-            st.image(snap["image_path"], use_column_width=True)
+            if os.path.exists(snap["image_path"]):
+                st.image(snap["image_path"], width="stretch")
+            else:
+                st.caption("Image file no longer available.")
             st.markdown("---")
 
 
