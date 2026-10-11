@@ -5,13 +5,13 @@ from datetime import date, timedelta
 from typing import Optional
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 from tools.job_title_utils import normalize_job_title
 
+
 def _fmt_int(val: float | None) -> str:
     if val is None or pd.isna(val):
-        return "—"
+        return "-"
     return f"{val:,.0f}"
 
 
@@ -22,7 +22,7 @@ def _prepare_dates(df: pd.DataFrame) -> pd.DataFrame:
             df["applied_date"], errors="coerce"
         ).dt.date
     else:
-        df["applied_date_parsed"] = pd.NaT
+        df["applied_date_parsed"] = None
     return df
 
 
@@ -31,23 +31,18 @@ def _job_title_counts(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     Return a small table of role categories and application counts,
     or None if we can't compute it.
     """
-    # Find the title column
-    title_col = None
-    for cand in ["job_title", "Job Title", "title", "Title"]:
-        if cand in df.columns:
-            title_col = cand
-            break
+    title_col = next(
+        (c for c in ["job_title", "Job Title", "title", "Title"] if c in df.columns),
+        None,
+    )
 
     if not title_col or df[title_col].dropna().empty:
         return None
 
-    titles = df[title_col].fillna("").astype(str)
-
-    df_norm = df.copy()
-    df_norm["role_category"] = titles.apply(normalize_job_title)
+    role_category = df[title_col].fillna("").astype(str).apply(normalize_job_title)
 
     counts = (
-        df_norm["role_category"]
+        role_category
         .value_counts()
         .rename_axis("Roles applied to")
         .reset_index(name="Applications")
@@ -56,8 +51,8 @@ def _job_title_counts(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     if counts.empty:
         return None
 
-    # Keep it compact
     return counts.head(6)
+
 
 def _compute_apps_per_week(df_dates: pd.DataFrame) -> float:
     """
@@ -70,9 +65,7 @@ def _compute_apps_per_week(df_dates: pd.DataFrame) -> float:
     if valid.empty:
         return 0.0
 
-    first = valid.min()
-    last = valid.max()
-    days = (last - first).days + 1
+    days = (valid.max() - valid.min()).days + 1
     weeks = max(1.0, days / 7.0)
 
     return round(len(valid) / weeks, 1)
@@ -99,16 +92,13 @@ def _avg_salary_range(df: pd.DataFrame) -> tuple[float | None, float | None]:
 
 
 def _kpi_row(df: pd.DataFrame) -> None:
-    today = date.today()
-    last_30 = today - timedelta(days=30)
+    last_30 = date.today() - timedelta(days=30)
 
     total_apps = len(df)
 
     df_dates = _prepare_dates(df)
-    apps_last_30 = df_dates[
-        (df_dates["applied_date_parsed"].notna())
-        & (df_dates["applied_date_parsed"] >= last_30)
-    ].shape[0]
+    parsed = df_dates["applied_date_parsed"]
+    apps_last_30 = int((parsed.notna() & (parsed >= last_30)).sum()) if parsed.notna().any() else 0
 
     apps_per_week = _compute_apps_per_week(df_dates)
     avg_min, avg_max = _avg_salary_range(df)
@@ -128,17 +118,16 @@ def _kpi_row(df: pd.DataFrame) -> None:
             st.metric("Average apps per week", apps_per_week)
 
         with st.container(border=True):
-            if avg_min is None and avg_max is None:
-                st.metric("Avg salary range (base, $)", "—")
+            if avg_min is not None and avg_max is not None:
+                value = f"{_fmt_int(avg_min)}–{_fmt_int(avg_max)}"
+            elif avg_min is not None:
+                value = f"Min {_fmt_int(avg_min)}"
+            elif avg_max is not None:
+                value = f"Max {_fmt_int(avg_max)}"
             else:
-                if avg_min is not None and avg_max is not None:
-                    value = f"{_fmt_int(avg_min)}–{_fmt_int(avg_max)}"
-                elif avg_min is not None:
-                    value = f"Min {_fmt_int(avg_min)}"
-                else:
-                    value = f"Max {_fmt_int(avg_max)}"
+                value = "-"
 
-                st.metric("Average salary range", value)
+            st.metric("Average salary range", value)
 
     with col3:
         if counts is None:
@@ -147,7 +136,7 @@ def _kpi_row(df: pd.DataFrame) -> None:
             st.dataframe(
                 counts,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 height=225,
             )
 
